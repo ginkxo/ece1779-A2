@@ -115,3 +115,28 @@ def workers():
     else:
         flash('There are currently {} worker(s).'.format(len(CPU_Util)), category='success')
     return render_template('workers.html')
+
+
+@app.route('/control_workers')
+def control_workers():
+    title='Change Workers'
+    return render_template('control.html', title=title)
+
+
+@app.route('/increase_workers')
+def increase_workers():
+    ec2 = boto3.resource('ec2')
+    ec2.create_instances(ImageId='ami-07812243a77042cd5', MinCount=1, MaxCount=1)
+    instances = ec2.instances.filter(
+        Filters=[{'Name': 'instance-state-name', 'Values': ['running']}])
+    count = 0
+    for _ in instances:
+        count += 1
+    flash('There are currently {} workers'.format(count))
+    return redirect(url_for('control.html'))
+
+@app.route('/decrease_workers')
+def decrease_workers():
+    title='Change Workers'
+    
+    return redirect(url_for('control.html'))
