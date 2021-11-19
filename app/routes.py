@@ -1,15 +1,61 @@
 from flask import render_template, url_for, flash, redirect, request
-from app import app
+from app import app, db
 from datetime import datetime, timedelta
+from app.models import User
+from app.forms import LoginForm
+from werkzeug.urls import url_parse
+from flask_login import current_user, login_user
 import boto3
-import sys
 import os
 
-#Default route and login route the same
+# To ensure we always have an admin account we attempt to make it every time
+# manager app only has one user, the admin
+def setup():
+    # function to attempt to create admin account every time the webapp is started
+    # since at least one account needs administrator priveleges, it needs to exist
+    try:
+        admin = User(username='root', email='root@email.com')
+        admin.set_password('password')
+        db.session.add(admin)
+        db.session.commit()
+        print("added admin,username: root, password: password")
+    except:
+        print("Admin user account already exists")
+    return
+
+
+#Default route must be logged in to see
+setup()  # first, configure admin account
 @app.route('/')
 @app.route('/index')
 def index():
+    if current_user.is_authenticated:  # only see anything if logged in
+        flash("Currently logged in")
+    else:
+        flash("Please login, only administrators can manage workers")
+        return redirect(url_for('login'))
+    flash("Welcome to Manger app - Use Navigation Bar to Manage/View Workers")
     return render_template('index.html')
+
+# login page for administrator account
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    # no need to login if you're already authenticated
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+    # form object of a login form class
+    form = LoginForm()
+    if form.validate_on_submit():  # method of this class to validate form
+        user = User.query.filter_by(username=form.username.data).first()
+        if user is None or not user.check_password(form.password.data):
+            # check to see validity for username, if not valid try againn
+            flash('Invalid username or password')
+            return redirect(url_for('login'))
+        # if valid, login the user
+        login_user(user, remember=form.remember_me.data)
+        return redirect(url_for('index'))
+    return render_template('login.html', title='Sign In', form=form)
+
 
 @app.route('/workers')
 def workers():
@@ -20,7 +66,14 @@ def workers():
         x axis: time, y axis: CPU utilization
     3. Chart 2: Show HTTP requests recieved by each worker for past 30 mins
         x axis: time, y axis: HTTP requests per min
+    4. Chart 3: workers in past 30 minutes
     """
+    if current_user.is_authenticated:  # only see anything if logged in
+        flash("Currently logged in")
+    else:
+        flash("Please login, only administrators can manage workers")
+        return redirect(url_for('index'))
+
     # creates a connection to aws services for ec2
     ec2 = boto3.resource('ec2')
 
@@ -130,12 +183,26 @@ def workers():
 
 @app.route('/control_workers')
 def control_workers():
+    # user must be admin in order to manage workers
+    if current_user.is_authenticated:  # only see anything if logged in
+        flash("Currently logged in")
+    else:
+        flash("Please login, only administrators can manage workers")
+        return redirect(url_for('index'))
+
     title='Change Workers'
     return render_template('control.html', title=title)
 
 
 @app.route('/increase_workers')
 def increase_workers():
+    # must be logged in to increase workers
+    if current_user.is_authenticated:  # only see anything if logged in
+        flash("Currently logged in")
+    else:
+        flash("Please login, only administrators can manage workers")
+        return redirect(url_for('index'))
+
     # create an ec2 client to make instances
     ec2 = boto3.resource('ec2', region_name='us-east-1')
     instances = ec2.instances.filter(
@@ -174,7 +241,13 @@ def increase_workers():
     return redirect(url_for('control_workers'))
 
 @app.route('/decrease_workers')
-def decrease_workers():    
+def decrease_workers():
+    if current_user.is_authenticated:  # only see anything if logged in
+        flash("Currently logged in")
+    else:
+        flash("Please login, only administrators can manage workers")
+        return redirect(url_for('index'))
+
     return redirect(url_for('control_workers'))
 
 def create_key_pair(ec2):
