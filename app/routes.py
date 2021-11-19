@@ -3,6 +3,7 @@ from app import app
 from datetime import datetime, timedelta
 import boto3
 import sys
+import os
 
 #Default route and login route the same
 @app.route('/')
@@ -12,6 +13,14 @@ def index():
 
 @app.route('/workers')
 def workers():
+    """
+    Workers page displays:
+    1. how many workers are active
+    2. Chart 1: total CPU utilization of worker for past 30 mins (resolution 1 minute)
+        x axis: time, y axis: CPU utilization
+    3. Chart 2: Show HTTP requests recieved by each worker for past 30 mins
+        x axis: time, y axis: HTTP requests per min
+    """
     # creates a connection to aws services for ec2
     ec2 = boto3.resource('ec2')
 
@@ -25,7 +34,7 @@ def workers():
     metric_name = 'CPU_Utilization'  # cloudwatch monitoring CPU
     stats = 'Average'
 
-    # dictionaries to store data
+    # dictionaries to generate chart 1 and 2
     CPU_Util = {}
     HTTP_Req = {}
 
@@ -39,8 +48,8 @@ def workers():
         """
         response, dictionary containing metrics
         Period: 60s
-        StartTime: Start monitoring
-        Endtime: Stop monitoring
+        StartTime: Start monitoring 30 mins in past from utc
+        Endtime: Stop monitoring at utc (window=30mins)
         MetricName: name of this measurement
         Namespace: HTTP request name
         Statistics: Maximum value from single observation
@@ -60,15 +69,16 @@ def workers():
                     },
                 ]
         )
-        print('This is the custom metric:')
 
         requests = []
         time_stamps = []
+        # now loop through each datapoint to get a per minute statistic
         for point in response["Datapoints"]:
             hour = point['Timestamp'].hour
             minute = point['Timestamp'].minute
             time = hour + minute/60
             time_stamps.append(round(time, 2))
+            print("HTTP stats: ", point['Maximum'])
             requests.append(point['Maximum'])
         
         indexes = list(range(len(time_stamps)))
@@ -103,6 +113,7 @@ def workers():
         time_stamps = list(map(time_stamps.__getitem__, indexes))
         cpu_stats = list(map(cpu_stats.__getitem__, indexes))
         CPU_Util[instance.id] = [time_stamps, cpu_stats]
+        print("CPU Util Stats:", time_stamps, cpu_stats)
     
     # CPU_Util is a dictionary, with keys = instance_id, and values = [sorted time_stamps, cpu_utilization values]
 
@@ -125,18 +136,66 @@ def control_workers():
 
 @app.route('/increase_workers')
 def increase_workers():
-    ec2 = boto3.resource('ec2')
-    ec2.create_instances(ImageId='ami-07812243a77042cd5', MinCount=1, MaxCount=1)
+    # create an ec2 client to make instances
+    ec2 = boto3.resource('ec2', region_name='us-east-1')
+    instances = ec2.instances.filter(
+        Filters=[{'Name': 'instance-state-name', 'Values': ['running']}])
+
+    # count all instances to give a proper name to the worker
+    count = 0
+    for _ in instances:
+        count += 1
+    count += 1  # next worker is incremented + 1
+    instance_name = f"worker_{count}"
+
+    # create instance with ami, t2.micro instance
+    # min/max DONT change (just creates 1 ec2 instance)
+    # keyname specified to an earlier created one
+    # security groupID is same as A1 group security rules
+    try:
+        ec2.create_instances(
+            ImageId='ami-07812243a77042cd5',
+            MinCount=1,
+            MaxCount=1,
+            InstanceType='t2.micro',
+            KeyName='ece1779-A1',
+            SecurityGroupIds=['sg-09f6de717dcacc564']
+            )
+    except:
+        flash("unable to create instance")
+
+    # check how many instances exist after attempting creation
     instances = ec2.instances.filter(
         Filters=[{'Name': 'instance-state-name', 'Values': ['running']}])
     count = 0
     for _ in instances:
         count += 1
     flash('There are currently {} workers'.format(count))
-    return redirect(url_for('control.html'))
+    return redirect(url_for('control_workers'))
 
 @app.route('/decrease_workers')
-def decrease_workers():
-    title='Change Workers'
-    
-    return redirect(url_for('control.html'))
+def decrease_workers():    
+    return redirect(url_for('control_workers'))
+
+def create_key_pair(ec2):
+    """
+    Function to create a key for sshing into each created instance
+    ec2 client is passed to this function to reduce redundancy
+    !!Not currently used!!
+    """
+    ec2_client = boto3.client("ec2", region_name="us-west-2")
+    # count instances to name key properly
+    instances = ec2.instances.filter(
+        Filters=[{'Name': 'instance-state-name', 'Values': ['running']}])
+    count = 0
+    for _ in instances:
+        count += 1
+    keyname = f"ec2-key-pair-{count}"
+    key_pair = ec2_client.create_key_pair(KeyName=keyname)
+
+    private_key = key_pair["KeyMaterial"]
+
+    # write private key to file with 400 permissions
+    with os.fdopen(os.open(f"../keys/{keyname}.pem", os.O_WRONLY | os.O_CREAT, 0o400), "w+") as handle:
+        handle.write(private_key)
+    return keyname
