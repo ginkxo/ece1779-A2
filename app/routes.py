@@ -81,6 +81,14 @@ def workers():
     ec2_instances = ec2.instances.filter(
         Filters=[{'Name': 'instance-state-name', 'Values': ['running']}])
 
+    # before creating more workers, must check to see if max is reached
+    check = 0
+    for _ in ec2_instances:
+        check += 1
+    if check >= 6:
+        flash("Max workers have been reached (6 workers)")
+        return redirect(url_for('index'))
+
     # low level client to interact with cloud watch
     # tracks metrics for aws resources
     client = boto3.client('cloudwatch')
