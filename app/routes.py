@@ -179,7 +179,8 @@ def workers():
         flash('Worker pool currently empty, please manually start some instances.', category='danger')
     else:
         flash('There are currently {} worker(s).'.format(len(CPU_Util)), category='success')
-    return render_template('workers.html')
+    return render_template('workers.html', instances = ec2_instances, 
+                            CPU_Util = CPU_Util, HTTP_Req = HTTP_Req)
 
 
 @app.route('/control_workers')
@@ -212,7 +213,7 @@ def increase_workers():
     # find all instances with a filter name and running
     ec2_instances = ec2.instances.filter(
         Filters=[{'Name': 'instance-state-name', 'Values': ['running']}])
-        
+
     # before creating more workers, must check to see if max is reached
     check = 0
     for _ in ec2_instances:  # ec2_instances dont have __len__ callback, need loop
