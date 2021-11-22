@@ -250,6 +250,26 @@ def decrease_workers():
 
     return redirect(url_for('control_workers'))
 
+
+@app.route('/stop',methods=['GET','POST'])
+# Stop a EC2 instance
+def stop():
+    if current_user.is_authenticated:  # only see anything if logged in
+        flash("Currently logged in")
+    else:
+        flash("Please login, only administrators stop workers")
+        return redirect(url_for('index'))
+
+    ec2 = boto3.resource('ec2')
+    ###### DO NOT CHANGE THE FILTER, REMOVING IT WILL DELETE ALL INSTANCES, INCLUDING THE ASSIGNMENT 1 INSTANCE! #######
+    instances = ec2.instances.filter(
+        Filters=[{'Name': 'instance-state-name', 'Values': ['running']}]).stop()
+    ###### DO NOT CHANGE THE FILTER, REMOVING IT WILL DELETE ALL INSTANCES, INCLUDING THE ASSIGNMENT 1 INSTANCE! #######
+    
+    flash('Instances stopped/terminated successfully! Please manually restart instances from AWS to view charts.', category='success')
+    return redirect(url_for('home'))
+
+
 def create_key_pair(ec2):
     """
     Function to create a key for sshing into each created instance
