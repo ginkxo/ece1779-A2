@@ -81,13 +81,6 @@ def workers():
     ec2_instances = ec2.instances.filter(
         Filters=[{'Name': 'instance-state-name', 'Values': ['running']}])
 
-    # before creating more workers, must check to see if max is reached
-    check = 0
-    for _ in ec2_instances:
-        check += 1
-    if check >= 6:
-        flash("Max workers have been reached (6 workers)")
-        return redirect(url_for('index'))
 
     # low level client to interact with cloud watch
     # tracks metrics for aws resources
@@ -216,12 +209,17 @@ def increase_workers():
     instances = ec2.instances.filter(
         Filters=[{'Name': 'instance-state-name', 'Values': ['running']}])
 
-    # count all instances to give a proper name to the worker
-    count = 0
-    for _ in instances:
-        count += 1
-    count += 1  # next worker is incremented + 1
-    instance_name = f"worker_{count}"
+    # find all instances with a filter name and running
+    ec2_instances = ec2.instances.filter(
+        Filters=[{'Name': 'instance-state-name', 'Values': ['running']}])
+        
+    # before creating more workers, must check to see if max is reached
+    check = 0
+    for _ in ec2_instances:  # ec2_instances dont have __len__ callback, need loop
+        check += 1
+    if check >= 6:
+        flash("Max workers have been reached (6 workers)")
+        return redirect(url_for('index'))
 
     # create instance with ami, t2.micro instance
     # min/max DONT change (just creates 1 ec2 instance)
