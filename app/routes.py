@@ -226,25 +226,22 @@ def increase_workers():
     # min/max DONT change (just creates 1 ec2 instance)
     # keyname specified to an earlier created one
     # security groupID is same as A1 group security rules
-    try:
-        ec2.create_instances(
-            ImageId='ami-07812243a77042cd5',
-            MinCount=1,
-            MaxCount=1,
-            InstanceType='t2.micro',
-            KeyName='ece1779-A1',
-            SecurityGroupIds=['sg-09f6de717dcacc564']
-            )
-    except:
-        flash("unable to create instance")
-
-    # check how many instances exist after attempting creation
-    instances = ec2.instances.filter(
-        Filters=[{'Name': 'instance-state-name', 'Values': ['running']}])
-    count = 0
-    for _ in instances:
-        count += 1
-    flash('There are currently {} workers'.format(count))
+    # monitoring is true for cloudwatch metrics
+    # try:
+    ec2.create_instances(
+        ImageId='ami-03fd75f2f5a87df48',
+        MinCount=1,
+        MaxCount=1,
+        InstanceType='t2.micro',
+        KeyName='ece1779-A1',
+        SecurityGroupIds=['sg-05074cccdff882d74'],
+        SubnetId='subnet-0f5a7a8fd40e35995',
+        Monitoring={'Enabled': True}
+        )
+    flash("Worker creation successful! Please give the manager app a moment to count it")
+    # except:
+    flash("Unable to create instance")
+    
     return redirect(url_for('control_workers'))
 
 @app.route('/decrease_workers')
